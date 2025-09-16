@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Task Submissions</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Submissions for: {{ classroom_task.title }}</h1>
+            <div class="header-links">
+                <a href="{{ url_for('classroom_details', classroom_id=classroom_task.classroom_id) }}" class="btn">Back to Classroom</a>
+                <a href="{{ url_for('dashboard') }}" class="btn">Dashboard</a>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </header>
+
+        <section class="task-info">
+            <h2>Task Information</h2>
+            <p><strong>Description:</strong> {{ classroom_task.description }}</p>
+            <p><strong>Created:</strong> {{ classroom_task.created_date.strftime('%Y-%m-%d') }}</p>
+            <p><strong>Due Date:</strong> {{ classroom_task.due_date.strftime('%Y-%m-%d') if classroom_task.due_date else 'No due date' }}</p>
+        </section>
+
+        <section class="submissions-list">
+            <h2>Student Submissions</h2>
+            {% if students %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Submission Status</th>
+                        <th>Submission Date</th>
+                        <th>Content</th>
+                        <th>Attachment</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td>{{ student.username }}</td>
+                        {% if student.id in submission_dict %}
+                            {% set submission = submission_dict[student.id] %}
+                            <td class="status-submitted">Submitted</td>
+                            <td>{{ submission.date.strftime('%Y-%m-%d %H:%M') }}</td>
+                            <td>{{ submission.content }}</td>
+                            <td>
+                                {% if submission.file_path %}
+                                    {% set filename = submission.file_path.split('/')[-1] %}
+                                    <a href="{{ url_for('uploaded_file', filename=filename) }}" target="_blank">
+                                        {% if submission.file_type == 'image' %}
+                                            <img src="{{ url_for('uploaded_file', filename=filename) }}" alt="Submission image" style="max-width: 100px; max-height: 100px;">
+                                        {% else %}
+                                            Download {{ submission.file_type }}
+                                        {% endif %}
+                                    </a>
+                                {% else %}
+                                    No attachment
+                                {% endif %}
+                            </td>
+                        {% else %}
+                            <td class="status-pending">Not submitted</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No students in this classroom.</p>
+            {% endif %}
+        </section>
+    </div>
+</body>
+</html>

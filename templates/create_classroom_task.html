@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Create Classroom Task</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Create Task for {{ classroom.name }}</h1>
+            <div class="header-links">
+                <a href="{{ url_for('classroom_details', classroom_id=classroom.id) }}" class="btn">Back to Classroom</a>
+                <a href="{{ url_for('dashboard') }}" class="btn">Dashboard</a>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </header>
+
+        <section class="form-section">
+            <h2>Create New Task</h2>
+            
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <form method="post" action="{{ url_for('create_classroom_task', classroom_id=classroom.id) }}">
+                <div class="form-group">
+                    <label for="title">Title:</label>
+                    <input type="text" id="title" name="title" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">Description:</label>
+                    <textarea id="description" name="description" rows="5" required></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="due_date">Due Date (optional):</label>
+                    <input type="date" id="due_date" name="due_date">
+                </div>
+                
+                <div class="form-group">
+                    <button type="submit" class="btn">Create Task</button>
+                </div>
+            </form>
+        </section>
+    </div>
+</body>
+</html>

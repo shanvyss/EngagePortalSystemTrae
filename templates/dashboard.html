@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Welcome, {{ current_user.username }}!</h1>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </header>
+
+        {% if is_admin %}
+        <section>
+            <h2>Admin Dashboard</h2>
+            <div class="action-buttons">
+                <a href="{{ url_for('register') }}" class="btn">Create New User</a>
+                <a href="{{ url_for('create_classroom') }}" class="btn">Create New Classroom</a>
+            </div>
+            <hr>
+            
+            <h3>Classrooms</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Teacher</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for classroom in classrooms %}
+                    <tr>
+                        <td>{{ classroom.name }}</td>
+                        <td>
+                            {% if classroom.teacher %}
+                                {{ classroom.teacher.username }}
+                            {% else %}
+                                No teacher assigned
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('classroom_details', classroom_id=classroom.id) }}" class="btn-small">View Details</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            
+            <hr>
+            <h3>Users</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Role</th>
+                        <th>Classroom</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.role }}</td>
+                        <td>
+                            {% if user.classroom %}
+                                {{ user.classroom.name }}
+                            {% else %}
+                                Not assigned
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form action="{{ url_for('assign_classroom', user_id=user.id) }}" method="POST" style="display: inline;">
+                                <select name="classroom_id">
+                                    <option value="">-- Select Classroom --</option>
+                                    {% for classroom in classrooms %}
+                                    <option value="{{ classroom.id }}">{{ classroom.name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn-small">Assign</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+        
+        {% elif is_teacher %}
+        <section>
+            <h2>Teacher Dashboard</h2>
+            <h3>My Classrooms</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Description</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for classroom in classrooms %}
+                    <tr>
+                        <td>{{ classroom.name }}</td>
+                        <td>{{ classroom.description }}</td>
+                        <td>
+                            <a href="{{ url_for('classroom_details', classroom_id=classroom.id) }}" class="btn-small">View Details</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+        
+        {% else %}
+        <section>
+            <h2>Student Dashboard</h2>
+            {% if classroom %}
+            <div class="classroom-info">
+                <h3>My Classroom: {{ classroom.name }}</h3>
+                <p>{{ classroom.description }}</p>
+                {% if classroom.teacher %}
+                <p>Teacher: {{ classroom.teacher.username }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+            <hr>
+            <h3>Task Submission</h3>
+            <form action="{{ url_for('submit_task') }}" method="POST">
+                <input type="text" name="task_content" placeholder="Task Content" required>
+                <button type="submit">Submit Task</button>
+            </form>
+            <hr>
+            <h3>My Tasks</h3>
+            <ul>
+                {% for task in tasks %}
+                <li>{{ task.content }} - Submitted on: {{ task.date.strftime('%Y-%m-%d') }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flashes">
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Classroom Details</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Classroom: {{ classroom.name }}</h1>
+            <div class="header-links">
+                <a href="{{ url_for('dashboard') }}" class="btn">Back to Dashboard</a>
+                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+            </div>
+        </header>
+
+        <section class="classroom-info">
+            <h2>Classroom Information</h2>
+            <p><strong>Description:</strong> {{ classroom.description }}</p>
+            <p><strong>Teacher:</strong> 
+                {% if classroom.teacher %}
+                    {{ classroom.teacher.username }}
+                {% else %}
+                    Not assigned
+                {% endif %}
+            </p>
+        </section>
+
+        {% if current_user.role == 'teacher' or current_user.role == 'admin' %}
+        <section class="classroom-tasks">
+            <h2>Classroom Tasks</h2>
+            <a href="{{ url_for('create_classroom_task', classroom_id=classroom.id) }}" class="btn">Create New Task</a>
+            
+            {% if classroom_tasks %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Description</th>
+                        <th>Due Date</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in classroom_tasks %}
+                    <tr>
+                        <td>{{ task.title }}</td>
+                        <td>{{ task.description }}</td>
+                        <td>{{ task.due_date.strftime('%Y-%m-%d') if task.due_date else 'No due date' }}</td>
+                        <td>{{ task.created_date.strftime('%Y-%m-%d') }}</td>
+                        <td>
+                            <a href="{{ url_for('view_task_submissions', task_id=task.id) }}" class="btn">View Submissions</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No tasks created for this classroom yet.</p>
+            {% endif %}
+        </section>
+        {% endif %}
+        
+        {% if current_user.role == 'student' %}
+        <section class="classroom-tasks">
+            <h2>Classroom Tasks</h2>
+            
+            {% if classroom_tasks %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Description</th>
+                        <th>Due Date</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in classroom_tasks %}
+                    <tr>
+                        <td>{{ task.title }}</td>
+                        <td>{{ task.description }}</td>
+                        <td>{{ task.due_date.strftime('%Y-%m-%d') if task.due_date else 'No due date' }}</td>
+                        <td>
+                            {% if task.id in student_submissions %}
+                                Submitted
+                            {% else %}
+                                Not submitted
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form action="{{ url_for('submit_task') }}" method="post" enctype="multipart/form-data">
+                                <input type="hidden" name="classroom_task_id" value="{{ task.id }}">
+                                <textarea name="task_content" placeholder="Your response" required></textarea>
+                                <input type="file" name="task_file">
+                                <button type="submit" class="btn">Submit Response</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No tasks assigned for this classroom yet.</p>
+            {% endif %}
+        </section>
+        {% endif %}
+        
+        <section class="student-list">
+            <h2>Students</h2>
+            {% if students %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Attendance Today</th>
+                        {% if current_user.role == 'admin' or current_user.role == 'teacher' %}
+                        <th>Actions</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for student in students %}
+                    <tr>
+                        <td>{{ student.username }}</td>
+                        <td>
+                            {% if student.id in attendance_dict %}
+                                <span class="attendance-{{ attendance_dict[student.id] }}">{{ attendance_dict[student.id] }}</span>
+                            {% else %}
+                                Not marked
+                            {% endif %}
+                        </td>
+                        {% if is_admin or is_teacher %}
+                        <td>
+                            <a href="{{ url_for('mark_attendance', classroom_id=classroom.id, user_id=student.id, status='present') }}" class="btn-small">Mark Present</a>
+                            <a href="{{ url_for('mark_attendance', classroom_id=classroom.id, user_id=student.id, status='absent') }}" class="btn-small">Mark Absent</a>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>No students assigned to this classroom yet.</p>
+            {% endif %}
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flashes">
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+    </div>
+</body>
+</html>

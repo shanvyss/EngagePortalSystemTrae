@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Create Classroom</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Create New Classroom</h1>
+            <a href="{{ url_for('dashboard') }}" class="btn">Back to Dashboard</a>
+        </header>
+
+        <section>
+            <form action="{{ url_for('create_classroom') }}" method="POST">
+                <div class="form-group">
+                    <label for="name">Classroom Name:</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="description">Description:</label>
+                    <textarea id="description" name="description" rows="4"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="teacher_id">Assign Teacher (Optional):</label>
+                    <select id="teacher_id" name="teacher_id">
+                        <option value="">-- Select Teacher --</option>
+                        {% for teacher in teachers %}
+                        <option value="{{ teacher.id }}">{{ teacher.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <button type="submit" class="btn">Create Classroom</button>
+            </form>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flashes">
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+    </div>
+</body>
+</html>

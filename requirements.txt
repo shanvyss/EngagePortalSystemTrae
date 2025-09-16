@@ -1,0 +1,10 @@
+# Requirements for Engage Portal System
+# Web application dependencies
+flask==2.0.1
+flask-sqlalchemy==2.5.1
+flask-login==0.5.0
+flask-bcrypt==0.7.1
+
+# Desktop application dependencies
+pyqt5==5.15.6
+sqlalchemy==1.4.23
