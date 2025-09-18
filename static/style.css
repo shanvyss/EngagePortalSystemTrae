@@ -149,6 +149,150 @@ tr:hover {
     color: white;
 }
 
+/* Attendance buttons */
+.attendance-buttons {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.btn-attendance {
+    padding: 6px 10px;
+    font-size: 0.8em;
+    border-radius: 3px;
+    text-decoration: none;
+    font-weight: bold;
+    min-width: 80px;
+    text-align: center;
+    color: #ffffff !important;
+    letter-spacing: normal;
+    text-transform: none;
+    font-variant: normal;
+}
+
+.btn-present {
+    background-color: #43b581;
+    color: white;
+}
+
+.btn-present:hover {
+    background-color: #3a9d6f;
+}
+
+.btn-absent {
+    background-color: #f04747;
+    color: white;
+}
+
+.btn-absent:hover {
+    background-color: #d03d3d;
+}
+
+.btn-late {
+    background-color: #faa61a;
+    color: white;
+}
+
+.btn-late:hover {
+    background-color: #e6941a;
+}
+
+/* Email button */
+.btn-email {
+    background-color: #5865f2;
+    color: white;
+    padding: 6px 10px;
+    font-size: 0.8em;
+    border-radius: 3px;
+    text-decoration: none;
+    font-weight: bold;
+    display: inline-block;
+    min-width: 100px;
+    text-align: center;
+    letter-spacing: normal;
+    text-transform: none;
+    font-variant: normal;
+}
+
+.btn-email:hover {
+    background-color: #4752c4;
+}
+
+/* Email actions */
+.email-actions {
+    margin-top: 5px;
+}
+
+/* Attendance status styling */
+.attendance-present {
+    color: #43b581;
+    font-weight: bold;
+}
+
+.attendance-absent {
+    color: #f04747;
+    font-weight: bold;
+}
+
+.attendance-late {
+    color: #faa61a;
+    font-weight: bold;
+}
+
+.attendance-not-marked {
+    color: #99aab5;
+    font-style: italic;
+}
+
+/* Form styling for email notification */
+.notification-form {
+    background-color: #2c2f33;
+    padding: 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #7289da;
+}
+
+.form-group small {
+    display: block;
+    color: #99aab5;
+    font-size: 0.8em;
+    margin-top: 5px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.btn-primary {
+    background-color: #7289da;
+}
+
+.btn-primary:hover {
+    background-color: #5b6eae;
+}
+
+.btn-secondary {
+    background-color: #99aab5;
+}
+
+.btn-secondary:hover {
+    background-color: #7a8b96;
+}
+
 /* Responsive design */
 @media (max-width: 768px) {
     .container {
@@ -163,5 +307,15 @@ tr:hover {
     
     .logout-btn, .back-btn {
         margin-top: 10px;
+    }
+    
+    .attendance-buttons {
+        flex-direction: column;
+        gap: 3px;
+    }
+    
+    .btn-attendance {
+        width: 100%;
+        text-align: center;
     }
 }

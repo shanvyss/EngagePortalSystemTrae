@@ -3,8 +3,11 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory
 from flask_login import LoginManager, login_user, logout_user, current_user, login_required
 from flask_bcrypt import Bcrypt
-from database import db, User, Attendance, Task, Classroom, ClassroomTask # Import all models
+from database import db, User, Attendance, Task, Classroom, ClassroomTask, ClassroomMembership # Import all models
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from werkzeug.utils import secure_filename
 from datetime import datetime
 
@@ -142,18 +145,150 @@ def mark_attendance(classroom_id, user_id, status):
         flash('You do not have permission to perform this action.', 'danger')
         return redirect(url_for('dashboard'))
     
+    # Check if the student belongs to this classroom (legacy or membership)
+    student = User.query.get_or_404(user_id)
+    is_member = (
+        student.classroom_id == classroom_id or
+        ClassroomMembership.query.filter_by(user_id=user_id, classroom_id=classroom_id).first() is not None
+    )
+    if not is_member:
+        flash('This student does not belong to this classroom.', 'danger')
+        return redirect(url_for('classroom_details', classroom_id=classroom_id))
+    
+    # Validate status
+    if status not in ['present', 'absent', 'late']:
+        flash('Invalid attendance status.', 'danger')
+        return redirect(url_for('classroom_details', classroom_id=classroom_id))
+    
+    # Check if attendance already marked today
+    from datetime import date
+    today = date.today()
+    existing_record = Attendance.query.filter(
+        Attendance.user_id == user_id,
+        Attendance.classroom_id == classroom_id,
+        Attendance.date >= today
+    ).first()
+    
+    if existing_record:
+        existing_record.status = status
+    else:
+        new_attendance = Attendance(user_id=user_id, classroom_id=classroom_id, status=status)
+        db.session.add(new_attendance)
+    
+    db.session.commit()
+    flash(f'Attendance marked for {student.username} as {status}.', 'success')
+    
+    return redirect(url_for('classroom_details', classroom_id=classroom_id))
+
+# Route to send email notification to parents
+@app.route('/send_parent_notification/<int:classroom_id>/<int:user_id>', methods=['GET', 'POST'])
+@login_required
+def send_parent_notification(classroom_id, user_id):
+    # Check if user is admin or the teacher of this classroom
+    classroom = Classroom.query.get_or_404(classroom_id)
+    
+    if current_user.role != 'admin' and (current_user.role != 'teacher' or classroom.teacher_id != current_user.id):
+        flash('You do not have permission to perform this action.', 'danger')
+        return redirect(url_for('dashboard'))
+    
     # Check if the student belongs to this classroom
     student = User.query.get_or_404(user_id)
     if student.classroom_id != classroom_id:
         flash('This student does not belong to this classroom.', 'danger')
         return redirect(url_for('classroom_details', classroom_id=classroom_id))
     
-    new_attendance = Attendance(user_id=user_id, classroom_id=classroom_id, status=status)
-    db.session.add(new_attendance)
-    db.session.commit()
-    flash(f'Attendance marked for {student.username} as {status}.', 'success')
+    if not student.parent_email:
+        flash(f'No parent email is set for {student.username}. Please add a parent email first.', 'danger')
+        return redirect(url_for('classroom_details', classroom_id=classroom_id))
     
-    return redirect(url_for('classroom_details', classroom_id=classroom_id))
+    if request.method == 'POST':
+        sender_email = request.form.get('sender_email')
+        sender_password = request.form.get('sender_password')
+        subject = request.form.get('subject')
+        message_body = request.form.get('message_body')
+        
+        if not all([sender_email, sender_password, subject, message_body]):
+            flash('All email fields are required.', 'danger')
+            return redirect(url_for('send_parent_notification', classroom_id=classroom_id, user_id=user_id))
+        
+        try:
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = sender_email
+            msg['To'] = student.parent_email
+            msg['Subject'] = subject
+            
+            # Attach message body
+            msg.attach(MIMEText(message_body, 'plain'))
+            
+            # Connect to Gmail SMTP server
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login(sender_email, sender_password)
+            
+            # Send email
+            server.send_message(msg)
+            server.quit()
+            
+            flash(f'Notification sent to parent of {student.username} at {student.parent_email}', 'success')
+            return redirect(url_for('classroom_details', classroom_id=classroom_id))
+            
+        except smtplib.SMTPAuthenticationError:
+            flash('Email login failed. If using Gmail, make sure you are using an App Password, not your regular password.', 'danger')
+        except smtplib.SMTPException as smtp_error:
+            flash(f'Email server error: {str(smtp_error)}', 'danger')
+        except Exception as e:
+            flash(f'Failed to send email: {str(e)}', 'danger')
+    
+    # Get today's attendance status for the student
+    from datetime import date
+    today = date.today()
+    attendance_record = Attendance.query.filter(
+        Attendance.user_id == user_id,
+        Attendance.classroom_id == classroom_id,
+        Attendance.date >= today
+    ).first()
+    
+    attendance_status = attendance_record.status if attendance_record else 'Not marked'
+    
+    # Default message based on attendance status
+    if attendance_status == 'absent':
+        default_subject = f'Absence Notification for {student.username}'
+        default_message = f"""Dear Parent/Guardian,
+
+This is to inform you that {student.username} was marked absent today in {classroom.name}.
+
+Please contact the school for more information.
+
+Regards,
+School Administration"""
+    elif attendance_status == 'late':
+        default_subject = f'Late Arrival Notification for {student.username}'
+        default_message = f"""Dear Parent/Guardian,
+
+This is to inform you that {student.username} was marked late today in {classroom.name}.
+
+Please contact the school for more information.
+
+Regards,
+School Administration"""
+    else:
+        default_subject = f'Attendance Notification for {student.username}'
+        default_message = f"""Dear Parent/Guardian,
+
+This is to inform you about {student.username}'s attendance status in {classroom.name}.
+
+Please contact the school for more information.
+
+Regards,
+School Administration"""
+    
+    return render_template('send_notification.html', 
+                         student=student, 
+                         classroom=classroom,
+                         attendance_status=attendance_status,
+                         default_subject=default_subject,
+                         default_message=default_message)
 
 # Simplified route for students to submit a task
 @app.route('/submit_task', methods=['POST'])
@@ -307,8 +442,11 @@ def create_classroom():
 def classroom_details(classroom_id):
     classroom = Classroom.query.get_or_404(classroom_id)
     
-    # Get all students in this classroom
-    students = User.query.filter_by(classroom_id=classroom_id, role='student').all()
+    # Get all students in this classroom (legacy and membership)
+    legacy_students = User.query.filter_by(classroom_id=classroom_id, role='student')
+    member_students = User.query.join(ClassroomMembership, ClassroomMembership.user_id == User.id) \
+        .filter(ClassroomMembership.classroom_id == classroom_id, User.role == 'student')
+    students = legacy_students.union(member_students).all()
     
     # Get today's attendance records
     today = datetime.now().date()
@@ -385,8 +523,11 @@ def classroom_attendance(classroom_id):
         flash('You are not assigned to this classroom.', 'danger')
         return redirect(url_for('dashboard'))
     
-    # Get students in this classroom
-    students = User.query.filter_by(classroom_id=classroom_id, role='student').all()
+    # Get students in this classroom (legacy and membership)
+    legacy_students = User.query.filter_by(classroom_id=classroom_id, role='student')
+    member_students = User.query.join(ClassroomMembership, ClassroomMembership.user_id == User.id) \
+        .filter(ClassroomMembership.classroom_id == classroom_id, User.role == 'student')
+    students = legacy_students.union(member_students).all()
     
     # Get today's attendance records
     from datetime import date
@@ -421,7 +562,12 @@ def assign_classroom(user_id):
         flash('Only students and teachers can be assigned to classrooms.', 'danger')
         return redirect(url_for('dashboard'))
     
-    user.classroom_id = classroom_id
+    # Legacy: keep single classroom_id if empty, but allow multiple via membership
+    if not user.classroom_id:
+        user.classroom_id = classroom_id
+    # Add membership (idempotent)
+    if classroom_id and not ClassroomMembership.query.filter_by(user_id=user_id, classroom_id=classroom_id).first():
+        db.session.add(ClassroomMembership(user_id=user_id, classroom_id=classroom_id))
     
     # If user is a teacher, also update the classroom's teacher_id
     if user.role == 'teacher' and classroom_id:

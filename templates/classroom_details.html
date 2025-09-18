@@ -130,13 +130,23 @@
                             {% if student.id in attendance_dict %}
                                 <span class="attendance-{{ attendance_dict[student.id] }}">{{ attendance_dict[student.id] }}</span>
                             {% else %}
-                                Not marked
+                                <span class="attendance-not-marked">Not marked</span>
                             {% endif %}
                         </td>
-                        {% if is_admin or is_teacher %}
+                        {% if current_user.role == 'admin' or current_user.role == 'teacher' %}
                         <td>
-                            <a href="{{ url_for('mark_attendance', classroom_id=classroom.id, user_id=student.id, status='present') }}" class="btn-small">Mark Present</a>
-                            <a href="{{ url_for('mark_attendance', classroom_id=classroom.id, user_id=student.id, status='absent') }}" class="btn-small">Mark Absent</a>
+                            <div class="attendance-buttons">
+                                <a href="{{ url_for('mark_attendance', classroom_id=classroom.id, user_id=student.id, status='present') }}" 
+                                   class="btn-attendance btn-present">Present</a>
+                                <a href="{{ url_for('mark_attendance', classroom_id=classroom.id, user_id=student.id, status='absent') }}" 
+                                   class="btn-attendance btn-absent">Absent</a>
+                                <a href="{{ url_for('mark_attendance', classroom_id=classroom.id, user_id=student.id, status='late') }}" 
+                                   class="btn-attendance btn-late">Late</a>
+                            </div>
+                            <div class="email-actions">
+                                <a href="{{ url_for('send_parent_notification', classroom_id=classroom.id, user_id=student.id) }}" 
+                                   class="btn-email">Email Parents</a>
+                            </div>
                         </td>
                         {% endif %}
                     </tr>

@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QH
                              QPushButton, QLabel, QLineEdit, QComboBox, QTableWidget,
                              QTableWidgetItem, QMessageBox, QTabWidget, QFormLayout,
                              QTextEdit, QGroupBox, QStackedWidget, QDialog, QDialogButtonBox,
-                             QFileDialog, QCheckBox, QProgressDialog)
+                             QFileDialog, QCheckBox, QProgressDialog, QListWidget, QListWidgetItem)
 from PyQt5.QtCore import Qt, pyqtSignal, QDate
 from PyQt5.QtGui import QFont, QColor
 from flask_bcrypt import Bcrypt
@@ -21,7 +21,7 @@ from task_submissions_dialog import TaskSubmissionsDialog
 from submit_task_dialog import SubmitTaskDialog
 
 # Import database models
-from database import db, User, Classroom, Attendance, Task, ClassroomTask
+from database import db, User, Classroom, Attendance, Task, ClassroomTask, ClassroomMembership
 
 # Initialize SQLAlchemy and Bcrypt
 bcrypt = Bcrypt()
@@ -565,7 +565,9 @@ class CreateUserDialog(QDialog):
         hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
         
         new_user = User(username=username, password_hash=hashed_password, role=role, parent_email=parent_email)
-        
+        db_session.add(new_user)
+        db_session.commit()  # ensure new_user.id is available
+
         if classroom_id:
             new_user.classroom_id = classroom_id
             
@@ -574,8 +576,11 @@ class CreateUserDialog(QDialog):
                 classroom = db_session.query(Classroom).get(classroom_id)
                 if classroom:
                     classroom.teacher_id = new_user.id
+            else:
+                # Add many-to-many membership for students
+                if not db_session.query(ClassroomMembership).filter_by(user_id=new_user.id, classroom_id=classroom_id).first():
+                    db_session.add(ClassroomMembership(user_id=new_user.id, classroom_id=classroom_id))
         
-        db_session.add(new_user)
         db_session.commit()
         
         QMessageBox.information(self, 'Success', f'User {username} created successfully')
@@ -590,31 +595,34 @@ class AssignClassroomDialog(QDialog):
         self.init_ui()
         
     def init_ui(self):
-        self.setWindowTitle('Assign Classroom')
-        self.setGeometry(300, 300, 400, 150)
+        self.setWindowTitle('Assign Classrooms')
+        self.setGeometry(300, 300, 500, 420)
         
         layout = QVBoxLayout()
         
         # User info
-        user_info = QLabel(f'Assigning classroom for: {self.user.username} ({self.user.role})')
+        user_info = QLabel(f'Assigning classrooms for: {self.user.username} ({self.user.role})')
         layout.addWidget(user_info)
         
         # Form layout
         form_layout = QFormLayout()
         
-        # Classroom dropdown
-        self.classroom_combo = QComboBox()
-        self.classroom_combo.addItem('No classroom', None)
-        
+        # Multi-select list of classrooms
+        self.class_list = QListWidget()
+        self.class_list.setSelectionMode(QListWidget.MultiSelection)
         classrooms = db_session.query(Classroom).all()
+        current_ids = set()
+        if self.user.classroom_id:
+            current_ids.add(self.user.classroom_id)
+        for m in db_session.query(ClassroomMembership).filter_by(user_id=self.user.id).all():
+            current_ids.add(m.classroom_id)
         for classroom in classrooms:
-            self.classroom_combo.addItem(classroom.name, classroom.id)
-            
-            # Select current classroom if any
-            if self.user.classroom_id and self.user.classroom_id == classroom.id:
-                self.classroom_combo.setCurrentIndex(self.classroom_combo.count() - 1)
-        
-        form_layout.addRow('Classroom:', self.classroom_combo)
+            item = QListWidgetItem(classroom.name)
+            item.setData(Qt.UserRole, classroom.id)
+            self.class_list.addItem(item)
+            if classroom.id in current_ids:
+                item.setSelected(True)
+        form_layout.addRow('Classrooms:', self.class_list)
         
         layout.addLayout(form_layout)
         
@@ -627,19 +635,30 @@ class AssignClassroomDialog(QDialog):
         self.setLayout(layout)
         
     def assign_classroom(self):
-        classroom_id = self.classroom_combo.currentData()
+        selected_ids = [self.class_list.item(i).data(Qt.UserRole) for i in range(self.class_list.count()) if self.class_list.item(i).isSelected()]
         
-        self.user.classroom_id = classroom_id
+        # Primary/legacy classroom is first selected (if any)
+        self.user.classroom_id = selected_ids[0] if selected_ids else None
         
-        # If user is a teacher, also update the classroom's teacher_id
-        if self.user.role == 'teacher' and classroom_id:
-            classroom = db_session.query(Classroom).get(classroom_id)
-            if classroom:
-                classroom.teacher_id = self.user.id
+        # Teachers: set as teacher in selected classrooms
+        if self.user.role == 'teacher':
+            for cid in selected_ids:
+                classroom = db_session.query(Classroom).get(cid)
+                if classroom:
+                    classroom.teacher_id = self.user.id
+        
+        # Sync memberships
+        existing = {m.classroom_id: m for m in db_session.query(ClassroomMembership).filter_by(user_id=self.user.id).all()}
+        for cid, membership in list(existing.items()):
+            if cid not in selected_ids:
+                db_session.delete(membership)
+        for cid in selected_ids:
+            if cid not in existing:
+                db_session.add(ClassroomMembership(user_id=self.user.id, classroom_id=cid))
         
         db_session.commit()
         
-        QMessageBox.information(self, 'Success', f'User {self.user.username} has been assigned to the classroom')
+        QMessageBox.information(self, 'Success', f'Classrooms updated for {self.user.username}')
         self.accept()
 
 # Classroom Details Dialog
@@ -726,7 +745,11 @@ class ClassroomDetailsDialog(QDialog):
         self.setLayout(layout)
         
     def load_students(self):
-        students = db_session.query(User).filter_by(classroom_id=self.classroom_id, role='student').all()
+        # Students via legacy classroom_id or membership
+        legacy = db_session.query(User).filter_by(classroom_id=self.classroom_id, role='student')
+        member = db_session.query(User).join(ClassroomMembership, ClassroomMembership.user_id == User.id) \
+            .filter(ClassroomMembership.classroom_id == self.classroom_id, User.role == 'student')
+        students = legacy.union(member).all()
         self.students_table.setRowCount(len(students))
         
         # Get today's attendance records
@@ -752,6 +775,8 @@ class ClassroomDetailsDialog(QDialog):
                 status_item.setBackground(QColor(200, 255, 200))  # Light green
             elif status == 'absent':
                 status_item.setBackground(QColor(255, 200, 200))  # Light red
+            elif status == 'late':
+                status_item.setBackground(QColor(255, 255, 200))  # Light yellow
                 
             self.students_table.setItem(row, 1, status_item)
             
@@ -777,8 +802,13 @@ class ClassroomDetailsDialog(QDialog):
                 absent_button.setMaximumWidth(70)
                 actions_layout.addWidget(absent_button)
                 
-                # Add notify button if student is marked absent
-                if status == 'absent':
+                late_button = QPushButton('Late')
+                late_button.clicked.connect(lambda _, s_id=student.id: self.mark_attendance(s_id, 'late'))
+                late_button.setMaximumWidth(70)
+                actions_layout.addWidget(late_button)
+                
+                # Add notify button if student is marked absent or late
+                if status in ['absent', 'late']:
                     notify_button = QPushButton('Notify')
                     notify_button.clicked.connect(lambda _, s_id=student.id: self.send_absence_notification(s_id))
                     notify_button.setMaximumWidth(70)
@@ -928,7 +958,7 @@ class ClassroomDetailsDialog(QDialog):
             
         try:
             # Create email setup dialog
-            email_dialog = EmailSetupDialog(student)
+            email_dialog = EmailSetupDialog(student, self.classroom_id)
             if not email_dialog.exec_():
                 return
                 
@@ -1033,9 +1063,10 @@ class ParentEmailDialog(QDialog):
 
 # Email Setup Dialog
 class EmailSetupDialog(QDialog):
-    def __init__(self, student):
+    def __init__(self, student, classroom_id):
         super().__init__()
         self.student = student
+        self.classroom_id = classroom_id
         self.sender_email = ''
         self.sender_password = ''
         self.subject = ''
@@ -1072,9 +1103,50 @@ class EmailSetupDialog(QDialog):
         self.password_input.setEchoMode(QLineEdit.Password)
         form_layout.addRow('Password/App Password:', self.password_input)
         
+        # Get today's attendance status
+        today = date.today()
+        attendance_record = db_session.query(Attendance).filter(
+            Attendance.user_id == self.student.id,
+            Attendance.classroom_id == self.classroom_id,
+            Attendance.date >= today
+        ).first()
+        
+        attendance_status = attendance_record.status if attendance_record else 'Not marked'
+        
+        if attendance_status == 'absent':
+            default_subject = f'Absence Notification for {self.student.username}'
+            default_message = f"""Dear Parent/Guardian,
+
+This is to inform you that {self.student.username} was marked absent today in class.
+
+Please contact the school for more information.
+
+Regards,
+School Administration"""
+        elif attendance_status == 'late':
+            default_subject = f'Late Arrival Notification for {self.student.username}'
+            default_message = f"""Dear Parent/Guardian,
+
+This is to inform you that {self.student.username} was marked late today in class.
+
+Please contact the school for more information.
+
+Regards,
+School Administration"""
+        else:
+            default_subject = f'Attendance Notification for {self.student.username}'
+            default_message = f"""Dear Parent/Guardian,
+
+This is to inform you about {self.student.username}'s attendance status in class.
+
+Please contact the school for more information.
+
+Regards,
+School Administration"""
+        
         # Subject field
         self.subject_input = QLineEdit()
-        self.subject_input.setText(f'Absence Notification for {self.student.username}')
+        self.subject_input.setText(default_subject)
         form_layout.addRow('Subject:', self.subject_input)
         
         layout.addLayout(form_layout)
@@ -1084,14 +1156,6 @@ class EmailSetupDialog(QDialog):
         message_layout = QVBoxLayout()
         
         self.message_input = QTextEdit()
-        default_message = f"""Dear Parent/Guardian,
-
-This is to inform you that {self.student.username} was marked absent today in class.
-
-Please contact the school for more information.
-
-Regards,
-School Administration"""
         self.message_input.setText(default_message)
         message_layout.addWidget(self.message_input)
         
@@ -1185,8 +1249,8 @@ def main():
     from sqlalchemy import inspect
     inspector = inspect(engine)
     
-    # Check if all required tables exist
-    if not (inspector.has_table('classroom') and inspector.has_table('classroom_task')):
+    # Ensure all required tables (including new ones) exist
+    if not (inspector.has_table('classroom') and inspector.has_table('classroom_task') and inspector.has_table('classroom_membership')):
         from database import db
         import app
         with app.app.app_context():

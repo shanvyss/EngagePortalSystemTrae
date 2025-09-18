@@ -42,9 +42,27 @@ class Classroom(db.Model):
     def __repr__(self):
         return f'<Classroom {self.name}>'
 
+class ClassroomMembership(db.Model):
+    """
+    Many-to-many membership for students in classrooms.
+    Teachers continue to be linked via Classroom.teacher_id.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('classroom.id'), nullable=False)
+    __table_args__ = (db.UniqueConstraint('user_id', 'classroom_id', name='uq_user_classroom'),)
+
 # Define relationships after all models are defined to avoid circular dependencies
-User.classroom = db.relationship('Classroom', foreign_keys=[User.classroom_id], backref=db.backref('students', lazy=True))
+User.classroom = db.relationship('Classroom', foreign_keys=[User.classroom_id], backref=db.backref('legacy_students', lazy=True))
 Classroom.teacher = db.relationship('User', foreign_keys=[Classroom.teacher_id], backref=db.backref('teaching_classrooms', lazy=True))
+
+# Many-to-many convenience relationships
+User.member_classrooms = db.relationship(
+    'Classroom',
+    secondary='classroom_membership',
+    backref=db.backref('students', lazy='dynamic'),
+    lazy='dynamic'
+)
 
 class Attendance(db.Model):
     """
@@ -54,7 +72,7 @@ class Attendance(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     classroom_id = db.Column(db.Integer, db.ForeignKey('classroom.id'), nullable=False)
     date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    status = db.Column(db.String(10), nullable=False) # 'present' or 'absent'
+    status = db.Column(db.String(10), nullable=False) # 'present', 'absent', or 'late'
     
     # Relationships
     user = db.relationship('User', backref=db.backref('attendances', lazy=True))
